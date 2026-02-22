@@ -30,7 +30,10 @@ final class AudioRecorder {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
+        Log.audio.info("Input device format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            Log.audio.error("No audio input device available")
             throw RecordingError.noInputDevice
         }
 
@@ -57,6 +60,7 @@ final class AudioRecorder {
 
         engine.prepare()
         try engine.start()
+        Log.audio.info("Recording started → \(self.outputURL.path, privacy: .public)")
     }
 
     func stop() -> URL {
@@ -65,6 +69,8 @@ final class AudioRecorder {
         engine = nil
         outputFile = nil
         converter = nil
+        let size = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
+        Log.audio.info("Recording stopped — file size: \(size) bytes")
         return outputURL
     }
 

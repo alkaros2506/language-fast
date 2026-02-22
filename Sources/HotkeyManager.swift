@@ -38,9 +38,9 @@ final class HotkeyManager {
             },
             userInfo: refcon
         ) else {
-            print("[HotkeyManager] Failed to create event tap.")
-            print("  → Open System Settings > Privacy & Security > Accessibility")
-            print("  → Add WhisperDictation to the list.")
+            Log.hotkey.error("Failed to create event tap — Accessibility permission not granted.")
+            Log.hotkey.error("  → Open System Settings > Privacy & Security > Accessibility")
+            Log.hotkey.error("  → Add WhisperDictation to the list.")
             return
         }
 
@@ -49,6 +49,7 @@ final class HotkeyManager {
         runLoopSource = src
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        Log.hotkey.info("Event tap created — listening for Right Option (keyCode \(Self.triggerKeyCode))")
     }
 
     func stop() {
@@ -80,9 +81,11 @@ final class HotkeyManager {
 
         if pressed && !isKeyDown {
             isKeyDown = true
+            Log.hotkey.debug("Right Option DOWN — start recording")
             onKeyDown?()
         } else if !pressed && isKeyDown {
             isKeyDown = false
+            Log.hotkey.debug("Right Option UP — stop recording")
             onKeyUp?()
         }
     }

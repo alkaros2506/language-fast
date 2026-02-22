@@ -4,6 +4,7 @@ import Foundation
 final class WhisperService {
 
     func transcribe(fileURL: URL) async throws -> String {
+        Log.whisper.info("Transcribing \(fileURL.lastPathComponent, privacy: .public) with \(Config.whisperPath, privacy: .public)")
         try await Task.detached {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: Config.whisperPath)
@@ -34,11 +35,13 @@ final class WhisperService {
             guard process.terminationStatus == 0 else {
                 let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown error"
+                Log.whisper.error("whisper-cli exited with status \(process.terminationStatus): \(errMsg, privacy: .public)")
                 throw TranscriptionError.failed(errMsg)
             }
 
             let text = String(data: outputData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Log.whisper.info("Transcription result (\(text.count) chars): \(text, privacy: .public)")
             return text
         }.value
     }

@@ -65,8 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkAccessibility() {
         let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(opts) {
-            print("[WhisperDictation] Accessibility permissions required for global hotkey.")
+        let trusted = AXIsProcessTrustedWithOptions(opts)
+        Log.general.info("Accessibility trusted: \(trusted)")
+        if !trusted {
+            Log.general.warning("Accessibility permissions required — global hotkey will not work until granted.")
         }
     }
 
@@ -88,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.stopAndTranscribe()
             }
         } catch {
-            print("[WhisperDictation] Recording failed: \(error.localizedDescription)")
+            Log.audio.error("Recording failed: \(error.localizedDescription, privacy: .public)")
             isRecording = false
             updateState(.error)
         }
@@ -115,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } catch {
                 await MainActor.run {
-                    print("[WhisperDictation] \(error.localizedDescription)")
+                    Log.whisper.error("Transcription error: \(error.localizedDescription, privacy: .public)")
                     updateState(.error)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                         self?.updateState(.idle)
