@@ -4,15 +4,22 @@ import Foundation
 final class WhisperService {
 
     func transcribe(fileURL: URL) async throws -> String {
-        Log.whisper.info("Transcribing \(fileURL.lastPathComponent, privacy: .public) with \(Config.whisperPath, privacy: .public)")
-        try await Task.detached {
+        let whisperPath = Settings.shared.whisperPath
+        let modelPath = Settings.shared.modelPath
+        let threadCount = Settings.shared.threadCount
+
+        Log.whisper.info("Transcribing \(fileURL.lastPathComponent, privacy: .public) with \(whisperPath, privacy: .public)")
+        Log.file("whisper-cli args: -m \(modelPath) -f \(fileURL.path) --no-timestamps -t \(threadCount)")
+
+        return try await Task.detached {
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: Config.whisperPath)
+            process.executableURL = URL(fileURLWithPath: whisperPath)
             process.arguments = [
-                "-m", Config.modelPath,
+                "-m", modelPath,
                 "-f", fileURL.path,
                 "--no-timestamps",
-                "-t", "\(Config.threadCount)",
+                "--language", "auto",
+                "-t", "\(threadCount)",
             ]
 
             // Enable Metal acceleration on Apple Silicon
@@ -32,16 +39,19 @@ final class WhisperService {
             let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
 
-            guard process.terminationStatus == 0 else {
+            let exitCode = process.terminationStatus
+            if exitCode != 0 {
                 let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown error"
-                Log.whisper.error("whisper-cli exited with status \(process.terminationStatus): \(errMsg, privacy: .public)")
+                Log.whisper.error("whisper-cli exited with status \(exitCode): \(errMsg, privacy: .public)")
+                Log.file("whisper-cli FAILED (exit \(exitCode)): \(errMsg)")
                 throw TranscriptionError.failed(errMsg)
             }
 
             let text = String(data: outputData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             Log.whisper.info("Transcription result (\(text.count) chars): \(text, privacy: .public)")
+            Log.file("Transcription OK (\(text.count) chars)")
             return text
         }.value
     }
