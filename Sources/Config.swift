@@ -1,15 +1,16 @@
 import Foundation
 
-/// Central configuration for WhisperDictation.
+/// Default configuration for WhisperDictation.
+/// These provide fallback values for Settings.
 /// Override paths via environment variables:
-///   WHISPER_DICTATION_BINARY  – path to whisper-cli
-///   WHISPER_DICTATION_MODEL   – path to .bin model file
-///   WHISPER_DICTATION_THREADS – number of CPU threads for inference
+///   WHISPER_DICTATION_BINARY  - path to whisper-cli
+///   WHISPER_DICTATION_MODEL   - path to .bin model file
+///   WHISPER_DICTATION_THREADS - number of CPU threads for inference
 enum Config {
 
     // MARK: - Whisper binary
 
-    static var whisperPath: String {
+    static var defaultWhisperPath: String {
         if let custom = env("WHISPER_DICTATION_BINARY") { return custom }
         let candidates = [
             "/opt/homebrew/bin/whisper-cli",
@@ -22,19 +23,15 @@ enum Config {
 
     // MARK: - Model
 
-    static var modelPath: String {
+    static var defaultModelPath: String {
         if let custom = env("WHISPER_DICTATION_MODEL") { return custom }
         let candidates = [
-            "/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin",
-            "/usr/local/share/whisper-cpp/models/ggml-base.en.bin",
-            "\(NSHomeDirectory())/whisper.cpp/models/ggml-base.en.bin",
+            "/opt/homebrew/share/whisper-cpp/models/ggml-medium.bin",
+            "/usr/local/share/whisper-cpp/models/ggml-medium.bin",
+            "\(NSHomeDirectory())/whisper.cpp/models/ggml-medium.bin",
         ]
         return candidates.first { FileManager.default.fileExists(atPath: $0) }
             ?? candidates[0]
-    }
-
-    static var modelName: String {
-        URL(fileURLWithPath: modelPath).deletingPathExtension().lastPathComponent
     }
 
     // MARK: - Metal acceleration
@@ -47,11 +44,10 @@ enum Config {
     // MARK: - Recording
 
     static let tempAudioPath = NSTemporaryDirectory() + "whisper-dictation.wav"
-    static let maxRecordingDuration: TimeInterval = 60
 
     // MARK: - Performance
 
-    static var threadCount: Int {
+    static var defaultThreadCount: Int {
         if let custom = env("WHISPER_DICTATION_THREADS"),
            let n = Int(custom) { return n }
         return min(ProcessInfo.processInfo.activeProcessorCount, 8)
