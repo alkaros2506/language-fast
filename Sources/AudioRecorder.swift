@@ -6,20 +6,32 @@ final class AudioRecorder {
 
     private var engine: AVAudioEngine?
     private var outputFile: AVAudioFile?
-    private var converter: AVAudioConverter?
+    private let lock = NSLock()
+    private var stopped = true
 
     private let outputURL: URL
 
-    /// Target format expected by whisper.cpp: 16 kHz, mono, signed 16-bit PCM.
-    private let targetFormat: AVAudioFormat
+    /// File format: 16 kHz, mono, signed 16-bit PCM (what whisper.cpp expects).
+    private let fileSettings: [String: Any] = [
+        AVFormatIDKey: Int(kAudioFormatLinearPCM),
+        AVSampleRateKey: 16000,
+        AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsFloatKey: false,
+        AVLinearPCMIsBigEndianKey: false,
+    ]
+
+    /// Processing format: Float32 at 16 kHz mono — matches AVAudioFile's default
+    /// processing format so writes don't need internal conversion.
+    private let processingFormat: AVAudioFormat
 
     init() {
         outputURL = URL(fileURLWithPath: Config.tempAudioPath)
-        targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
+        processingFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
             sampleRate: 16000,
             channels: 1,
-            interleaved: true
+            interleaved: false
         )!
     }
 
@@ -31,13 +43,14 @@ final class AudioRecorder {
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         Log.audio.info("Input device format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+        Log.file("Audio input: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             Log.audio.error("No audio input device available")
             throw RecordingError.noInputDevice
         }
 
-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+        guard let converter = AVAudioConverter(from: inputFormat, to: processingFormat) else {
             throw RecordingError.converterFailed
         }
 
@@ -46,46 +59,65 @@ final class AudioRecorder {
 
         let outputFile = try AVAudioFile(
             forWriting: outputURL,
-            settings: targetFormat.settings
+            settings: fileSettings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
         )
 
+        lock.lock()
         self.engine = engine
         self.outputFile = outputFile
-        self.converter = converter
+        self.stopped = false
+        lock.unlock()
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
             [weak self] buffer, _ in
-            self?.processBuffer(buffer)
+            guard let self else { return }
+            self.processBuffer(buffer, converter: converter)
         }
 
         engine.prepare()
         try engine.start()
         Log.audio.info("Recording started → \(self.outputURL.path, privacy: .public)")
+        Log.file("Recording started → \(self.outputURL.path)")
     }
 
     func stop() -> URL {
+        // Mark stopped under lock — in-flight processBuffer calls will bail out
+        lock.lock()
+        stopped = true
+        outputFile = nil
+        lock.unlock()
+
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
-        outputFile = nil
-        converter = nil
+
         let size = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
         Log.audio.info("Recording stopped — file size: \(size) bytes")
+        Log.file("Recording stopped — file size: \(size) bytes")
         return outputURL
     }
 
     // MARK: - Private
 
-    private func processBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let converter, let outputFile else { return }
+    private func processBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter) {
+        lock.lock()
+        guard !stopped, let outputFile else {
+            lock.unlock()
+            return
+        }
 
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let ratio = processingFormat.sampleRate / buffer.format.sampleRate
         let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
 
         guard let outputBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
+            pcmFormat: processingFormat,
             frameCapacity: outputCapacity
-        ) else { return }
+        ) else {
+            lock.unlock()
+            return
+        }
 
         var error: NSError?
         var hasData = true
@@ -103,6 +135,7 @@ final class AudioRecorder {
         if error == nil, outputBuffer.frameLength > 0 {
             try? outputFile.write(from: outputBuffer)
         }
+        lock.unlock()
     }
 }
 

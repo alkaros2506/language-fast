@@ -2,10 +2,12 @@ import Cocoa
 
 // Log resolved configuration at launch so issues are visible immediately.
 // View with:  log stream --predicate 'subsystem == "com.local.WhisperDictation"' --level debug
+let settings = Settings.shared
+Log.file("Starting WhisperDictation")
 Log.general.info("Starting WhisperDictation")
-Log.general.info("  whisper-cli : \(Config.whisperPath, privacy: .public)  exists=\(FileManager.default.fileExists(atPath: Config.whisperPath))")
-Log.general.info("  model       : \(Config.modelPath, privacy: .public)  exists=\(FileManager.default.fileExists(atPath: Config.modelPath))")
-Log.general.info("  threads     : \(Config.threadCount)")
+Log.general.info("  whisper-cli : \(settings.whisperPath, privacy: .public)  exists=\(FileManager.default.fileExists(atPath: settings.whisperPath))")
+Log.general.info("  model       : \(settings.modelPath, privacy: .public)  exists=\(FileManager.default.fileExists(atPath: settings.modelPath))")
+Log.general.info("  threads     : \(settings.threadCount)")
 Log.general.info("  temp audio  : \(Config.tempAudioPath, privacy: .public)")
 if let metal = Config.metalResourcesPath {
     Log.general.info("  metal res   : \(metal, privacy: .public)")
